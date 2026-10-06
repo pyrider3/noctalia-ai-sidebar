@@ -1,6 +1,6 @@
 --!nonstrict
--- AI Sidebar — Modern Glassmorphism & Material 3 Expressive Panel for Noctalia & Niri
--- High-aesthetic chat interface with multi-backend streaming, selection grab, and multimodal screenshot.
+-- AI Sidebar — Modern Glassmorphism & Desktop Controller Panel for Noctalia & Niri
+-- High-aesthetic chat interface with multi-backend streaming, desktop system actions, and secondary engine menu.
 
 local current_backend = "agy"
 local draft = ""
@@ -9,14 +9,15 @@ local attached_image = ""
 local session = { messages = {}, status = "idle", error = "" }
 local is_streaming = false
 local anim_tick = 0
-local LOADER_GLYPHS = { "loader", "loader-2", "loader-quarter" }
+local show_engine_menu = false
+local LOADER_GLYPHS = { "loader", "loader-2", "loader-circle" }
 local WRAP = 450
 
 local BACKENDS = {
-    { id = "agy", label = "⚡ agy", icon = "sparkles", desc = "Antigravity CLI" },
-    { id = "codex", label = "💻 Codex", icon = "terminal", desc = "Codex CLI" },
-    { id = "api", label = "🤖 API", icon = "cloud", desc = "DeepSeek / OpenAI" },
-    { id = "ollama", label = "🦙 Ollama", icon = "cpu", desc = "本地私有模型" },
+    { id = "agy", label = "⚡ agy", icon = "sparkles", desc = "Antigravity CLI (本地智能推理)" },
+    { id = "codex", label = "💻 Codex", icon = "terminal", desc = "Codex CLI (本地代码智能代理)" },
+    { id = "api", label = "🤖 API", icon = "cloud", desc = "DeepSeek / OpenAI 兼容协议" },
+    { id = "ollama", label = "🦙 Ollama", icon = "cpu", desc = "本地私有模型离线推理" },
 }
 
 local function getPluginDir()
@@ -112,6 +113,19 @@ end
 
 local render
 
+-- 思考动效心跳轮询（解决 Noctalia panel 无定时器触发的问题）
+local function tickStreaming()
+    if not is_streaming then return end
+    anim_tick = anim_tick + 1
+    reloadSession()
+    render()
+    if is_streaming then
+        noctalia.runAsync("sleep 0.18", function()
+            tickStreaming()
+        end)
+    end
+end
+
 local function sendPrompt(textToSend)
     local query = textToSend or draft
     if not query or query == "" then
@@ -124,6 +138,22 @@ local function sendPrompt(textToSend)
     composer_seq = composer_seq + 1
     is_streaming = true
 
+    -- 内存即时呈现：发送瞬间插入用户消息与助手等待卡片，零延迟响应
+    if not session.messages then session.messages = {} end
+    table.insert(session.messages, {
+        role = "user",
+        content = query,
+        image = imgArg,
+        time = os.date("%H:%M") or "",
+    })
+    table.insert(session.messages, {
+        role = "assistant",
+        content = "",
+        thinking = "",
+        backend = current_backend,
+        time = os.date("%H:%M") or "",
+    })
+
     local safeBackend = current_backend:gsub("'", "'\\''")
     local safePrompt = query:gsub("'", "'\\''")
     local safeImg = imgArg:gsub("'", "'\\''")
@@ -131,10 +161,12 @@ local function sendPrompt(textToSend)
     local cmd = "python3 '" .. getEngineScript() .. "' send '" .. safeBackend .. "' '" .. safePrompt .. "' '" .. safeImg .. "'"
     noctalia.runAsync(cmd, function()
         reloadSession()
+        is_streaming = false
         render()
-    end, 10000)
+    end, 60000)
 
     render()
+    tickStreaming()
 end
 
 function onSendClicked()
@@ -146,6 +178,7 @@ function onStopClicked()
     local cmd = "python3 '" .. getEngineScript() .. "' stop"
     noctalia.runAsync(cmd, function()
         reloadSession()
+        is_streaming = false
         render()
     end, 5000)
 end
@@ -157,6 +190,8 @@ function onNewChatClicked()
         attached_image = ""
         draft = ""
         composer_seq = composer_seq + 1
+        show_engine_menu = false
+        noctalia.notify("AI 侧边栏", "已开启新对话")
         render()
     end, 5000)
 end
@@ -187,17 +222,23 @@ function onScreenshotClicked()
     noctalia.runAsync(cmd, function(res)
         local path = res.stdout or ""
         path = path:gsub("^%s+", ""):gsub("%s+$", "")
-        noctalia.togglePanel("pyrider3/ai-sidebar:ai-sidebar-panel")
-        if path ~= "" and noctalia.fileExists(path) then
-            attached_image = path
-            noctalia.notify("AI 侧边栏", "屏幕截图已就绪，请输入针对该图片的问题")
-            render()
-        end
+        noctalia.runAsync("noctalia msg panel-open pyrider3/ai-sidebar:ai-sidebar-panel", function()
+            if path ~= "" and noctalia.fileExists(path) then
+                attached_image = path
+                noctalia.notify("AI 侧边栏", "屏幕截图已就绪，请输入针对该图片的问题")
+                render()
+            end
+        end)
     end, 20000)
 end
 
 function onCopyText(content)
     if not content or content == "" then return end
+    if noctalia.copyToClipboard then
+        noctalia.copyToClipboard(content)
+        noctalia.notify("AI 侧边栏", "已复制到剪贴板")
+        return
+    end
     local safe = content:gsub("'", "'\\''")
     local cmd = "printf '%s' '" .. safe .. "' | wl-copy"
     noctalia.runAsync(cmd, function()
@@ -243,14 +284,50 @@ render = function()
 
             ui.column({ align = "center", gap = 4 }, {
                 ui.label({ text = "今天有什么可以帮你？", fontSize = 17, fontWeight = "bold", color = "on_surface" }),
-                ui.label({ text = "随时划词解析、框选屏幕或直接提问", fontSize = 12, color = "on_surface_variant" }),
+                ui.label({ text = "支持真机操控、打开程序、调节系统、划词或截屏", fontSize = 12, color = "on_surface_variant" }),
             }),
 
-            -- 快捷灵感药丸组（Prompt Chips）
+            -- 桌面控制与技术灵感药丸组（Quick Action Chips）
             ui.column({ align = "center", gap = 8 }, {
                 ui.row({ align = "center", gap = 8 }, {
                     ui.button({
-                        text = "💡 解释选中文本",
+                        text = "🚀 打开终端 Kitty",
+                        variant = "secondary",
+                        controlSize = "sm",
+                        onClick = function()
+                            sendPrompt("帮我打开终端")
+                        end,
+                    }),
+                    ui.button({
+                        text = "🖼️ 换一张壁纸",
+                        variant = "secondary",
+                        controlSize = "sm",
+                        onClick = function()
+                            sendPrompt("帮我换张壁纸")
+                        end,
+                    }),
+                }),
+                ui.row({ align = "center", gap = 8 }, {
+                    ui.button({
+                        text = "🔊 调大系统音量",
+                        variant = "secondary",
+                        controlSize = "sm",
+                        onClick = function()
+                            sendPrompt("帮我把声音调大")
+                        end,
+                    }),
+                    ui.button({
+                        text = "⚙️ 打开控制中心",
+                        variant = "secondary",
+                        controlSize = "sm",
+                        onClick = function()
+                            sendPrompt("帮我打开设置")
+                        end,
+                    }),
+                }),
+                ui.row({ align = "center", gap = 8 }, {
+                    ui.button({
+                        text = "💡 解释屏幕选中文本",
                         variant = "secondary",
                         controlSize = "sm",
                         onClick = function()
@@ -258,25 +335,7 @@ render = function()
                         end,
                     }),
                     ui.button({
-                        text = "🐛 排查代码 Bug",
-                        variant = "secondary",
-                        controlSize = "sm",
-                        onClick = function()
-                            sendPrompt("请帮我审查并排查这段代码中的潜在 Bug、边界情况或性能隐患：")
-                        end,
-                    }),
-                }),
-                ui.row({ align = "center", gap = 8 }, {
-                    ui.button({
-                        text = "🌐 润色为技术中文",
-                        variant = "secondary",
-                        controlSize = "sm",
-                        onClick = function()
-                            sendPrompt("请将以下内容润色翻译为自然、专业的技术中文：")
-                        end,
-                    }),
-                    ui.button({
-                        text = "📸 区域截屏分析",
+                        text = "📸 区域截屏提问",
                         variant = "secondary",
                         controlSize = "sm",
                         onClick = function()
@@ -311,7 +370,6 @@ render = function()
                     fontSize = 13,
                     color = "on_surface",
                     maxWidth = 400,
-                    wrap = true,
                 }))
                 table.insert(userContent, ui.row({ align = "center", justify = "end" }, {
                     ui.label({ text = timeStr, fontSize = 10, color = "on_surface_variant" }),
@@ -351,7 +409,7 @@ render = function()
                         padding = 10,
                         gap = 4,
                         radius = 10,
-                        fill = "surface_variant/0.3",
+                        fill = "surface_variant/0.4",
                     }, {
                         ui.row({ align = "center", gap = 6 }, {
                             ui.glyph({ name = "brain", size = 13, color = "secondary" }),
@@ -362,7 +420,6 @@ render = function()
                             fontSize = 11,
                             color = "on_surface_variant",
                             maxWidth = 440,
-                            wrap = true,
                         }),
                     }))
                 end
@@ -376,7 +433,7 @@ render = function()
                             table.insert(assistantContent, ui.column({
                                 padding = 10,
                                 radius = 10,
-                                fill = "surface_variant/0.45",
+                                fill = "surface_variant/0.5",
                                 gap = 6,
                             }, {
                                 ui.row({ align = "center", justify = "space_between" }, {
@@ -401,7 +458,6 @@ render = function()
                                     fontSize = 11,
                                     color = "on_surface",
                                     maxWidth = 440,
-                                    wrap = true,
                                 }),
                             }))
                         else
@@ -411,12 +467,26 @@ render = function()
                             }))
                         end
                     end
-                elseif is_streaming and idx == #session.messages then
-                    -- 正在生成中的优雅呼吸指示符
+                end
+
+                -- 正在深度思考与流式生成时的生动动画条
+                if is_streaming and idx == #session.messages then
                     local loaderIcon = LOADER_GLYPHS[(anim_tick % #LOADER_GLYPHS) + 1]
-                    table.insert(assistantContent, ui.row({ align = "center", gap = 8, padding = 4 }, {
+                    local dots = string.rep(".", (anim_tick % 3) + 1)
+                    table.insert(assistantContent, ui.row({
+                        align = "center",
+                        gap = 8,
+                        padding = 8,
+                        radius = 10,
+                        fill = "primary/0.15",
+                    }, {
                         ui.glyph({ name = loaderIcon, size = 16, color = "primary" }),
-                        ui.label({ text = "思考并生成回答中...", fontSize = 12, color = "on_surface_variant" }),
+                        ui.label({
+                            text = "正在深度思考与执行操作" .. dots,
+                            fontSize = 12,
+                            fontWeight = "bold",
+                            color = "primary",
+                        }),
                     }))
                 end
 
@@ -439,7 +509,7 @@ render = function()
                     ui.column({
                         gap = 8,
                         padding = 12,
-                        fill = "surface_variant/0.55",
+                        fill = "surface_variant/0.35",
                         radius = 16,
                     }, assistantContent),
                 }))
@@ -455,16 +525,29 @@ render = function()
         ui.row({ align = "center", gap = 8 }, {
             ui.glyph({ name = "sparkles", size = 20, color = "primary" }),
             ui.label({ text = "AI Copilot", fontSize = 16, fontWeight = "bold", color = "on_surface" }),
-            ui.row({
-                padding = 4,
-                radius = 6,
-                fill = "primary/0.15",
-                align = "center",
-            }, {
-                ui.label({ text = currentInfo.label, fontSize = 10, fontWeight = "bold", color = "primary" }),
+            -- 当前推理引擎胶囊（点击可展开二级切换菜单）
+            ui.button({
+                text = currentInfo.label .. " ▾",
+                variant = "secondary",
+                controlSize = "sm",
+                tooltip = "点击展开引擎切换二级菜单",
+                onClick = function()
+                    show_engine_menu = not show_engine_menu
+                    render()
+                end,
             }),
         }),
         ui.row({ align = "center", gap = 4 }, {
+            ui.button({
+                glyph = show_engine_menu and "chevron-up" or "settings",
+                tooltip = show_engine_menu and "收起菜单" or "模型与引擎设置",
+                variant = show_engine_menu and "primary" or "ghost",
+                controlSize = "sm",
+                onClick = function()
+                    show_engine_menu = not show_engine_menu
+                    render()
+                end,
+            }),
             ui.button({
                 glyph = "plus",
                 tooltip = "开启新对话",
@@ -489,27 +572,62 @@ render = function()
         }),
     }))
 
-    -- 2. 极简紧凑引擎切换胶囊栏（Segmented Tabs）
-    local tabButtons = {}
-    for _, b in ipairs(BACKENDS) do
-        table.insert(tabButtons, ui.button({
-            text = b.label,
-            controlSize = "sm",
-            flexGrow = 1,
-            variant = (current_backend == b.id) and "primary" or "ghost",
-            onClick = function()
-                current_backend = b.id
-                render()
-            end,
+    -- 2. 二级菜单：选择推理后端与设置（默认隐藏，点击头部胶囊时展开）
+    if show_engine_menu then
+        local menuCards = {}
+        table.insert(menuCards, ui.row({ align = "center", justify = "space_between" }, {
+            ui.row({ align = "center", gap = 6 }, {
+                ui.glyph({ name = "cpu", size = 16, color = "primary" }),
+                ui.label({ text = "切换推理引擎 (Backend Engine)", fontSize = 13, fontWeight = "bold", color = "on_surface" }),
+            }),
+            ui.button({
+                glyph = "close",
+                variant = "ghost",
+                controlSize = "sm",
+                onClick = function()
+                    show_engine_menu = false
+                    render()
+                end,
+            }),
         }))
+
+        for _, b in ipairs(BACKENDS) do
+            local isSelected = (current_backend == b.id)
+            table.insert(menuCards, ui.row({
+                align = "center",
+                justify = "space_between",
+                padding = 8,
+                radius = 12,
+                fill = isSelected and "primary/0.2" or "surface_variant/0.3",
+            }, {
+                ui.row({ align = "center", gap = 10 }, {
+                    ui.glyph({ name = b.icon, size = 18, color = isSelected and "primary" or "on_surface_variant" }),
+                    ui.column({ gap = 2 }, {
+                        ui.label({ text = b.label, fontSize = 12, fontWeight = "bold", color = isSelected and "primary" or "on_surface" }),
+                        ui.label({ text = b.desc, fontSize = 10, color = "on_surface_variant" }),
+                    }),
+                }),
+                ui.button({
+                    text = isSelected and "使用中" or "切换",
+                    variant = isSelected and "primary" or "ghost",
+                    controlSize = "sm",
+                    onClick = function()
+                        current_backend = b.id
+                        show_engine_menu = false
+                        noctalia.notify("AI 侧边栏", "已切换推理引擎为: " .. b.label)
+                        render()
+                    end,
+                }),
+            }))
+        end
+
+        table.insert(bodyElements, ui.column({
+            padding = 12,
+            radius = 16,
+            fill = "surface_variant/0.6",
+            gap = 8,
+        }, menuCards))
     end
-    table.insert(bodyElements, ui.row({
-        align = "center",
-        padding = 4,
-        radius = 12,
-        fill = "surface_variant/0.25",
-        gap = 4,
-    }, tabButtons))
 
     -- 3. 消息滚动流
     table.insert(bodyElements, ui.scroll({ flexGrow = 1, gap = 12 }, messageCards))
@@ -575,7 +693,7 @@ render = function()
         ui.input({
             key = "composer_" .. tostring(composer_seq),
             value = draft,
-            placeholder = "向 " .. currentInfo.label .. " 提问... (Enter 发送, Shift+Enter 换行)",
+            placeholder = "向 " .. currentInfo.label .. " 提问或吩咐系统操作... (Enter 发送)",
             multiline = true,
             submitOnEnter = true,
             flexGrow = 1,
@@ -622,13 +740,11 @@ render = function()
         }),
     }))
 
-    -- 侧边栏全屏抽屉容器
+    -- 侧边栏全屏抽屉容器 (使用 Noctalia 原生毛玻璃窗口背景，无内嵌阴影框)
     panel.render(ui.column({
         flexGrow = 1,
         gap = 12,
         padding = 16,
-        fill = "surface/0.92",
-        radius = 20,
     }, bodyElements))
 end
 
@@ -637,13 +753,3 @@ function onOpen(_context)
     render()
 end
 
-function update()
-    if is_streaming then
-        anim_tick = anim_tick + 1
-        reloadSession()
-        render()
-    end
-end
-
-noctalia.setUpdateInterval(200)
-reloadSession()
