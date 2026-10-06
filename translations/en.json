@@ -1,0 +1,63 @@
+{
+  "description": "Full-height AI sidebar for Noctalia and Niri with API, Ollama, agy, and Codex backends.",
+  "panel": {
+    "clear": "Clear",
+    "close": "Close",
+    "composer_placeholder": "Ask AI or press Enter to send...",
+    "config": "Settings",
+    "copy": "Copy",
+    "copied": "Copied to clipboard",
+    "empty_hint": "Select text on screen or take a screenshot, then ask your question.",
+    "empty_title": "AI Assistant Ready",
+    "new_chat": "New Chat",
+    "preset_code": "Explain Code",
+    "preset_fix": "Fix Bugs",
+    "preset_translate": "Translate",
+    "preset_summary": "Summarize",
+    "quick_screenshot": "Screenshot",
+    "quick_selection": "Grab Selection",
+    "regenerate": "Regenerate",
+    "send": "Send",
+    "stop": "Stop",
+    "thinking": "Thinking...",
+    "title": "AI Assistant"
+  },
+  "settings": {
+    "api_key": {
+      "description": "API key for your OpenAI-compatible provider (e.g. DeepSeek or SiliconFlow).",
+      "label": "API Key"
+    },
+    "api_model": {
+      "description": "Model identifier for API queries (e.g. deepseek-chat or gpt-4o).",
+      "label": "API Model"
+    },
+    "api_url": {
+      "description": "Base URL for OpenAI-compatible API endpoint.",
+      "label": "API Base URL"
+    },
+    "default_backend": {
+      "description": "Default engine backend when opening the sidebar.",
+      "label": "Default Backend",
+      "option_agy": "Antigravity CLI (agy)",
+      "option_api": "OpenAI / DeepSeek API",
+      "option_codex": "Codex CLI",
+      "option_ollama": "Local Ollama"
+    },
+    "ollama_model": {
+      "description": "Default model tag to run on local Ollama.",
+      "label": "Ollama Model"
+    },
+    "ollama_url": {
+      "description": "HTTP endpoint URL of local Ollama service.",
+      "label": "Ollama Endpoint"
+    },
+    "system_prompt": {
+      "description": "System role prompt injected into queries.",
+      "label": "System Prompt"
+    }
+  },
+  "title": "AI Sidebar",
+  "widget": {
+    "tooltip": "AI Assistant (Click or press Super+S to toggle)"
+  }
+}

@@ -1,0 +1,79 @@
+id = "pyrider3/ai-sidebar"
+name = "AI Sidebar"
+version = "1.0.0"
+plugin_api = 13
+author = "pyrider3"
+license = "MIT"
+icon = "sparkles"
+description = "Full-height AI sidebar for Noctalia and Niri with API, Ollama, agy, and Codex backends."
+dependencies = ["python3", "wl-copy", "wl-paste"]
+tags = ["ai", "panel", "bar", "productivity", "utility", "niri"]
+
+[[setting]]
+key = "default_backend"
+type = "select"
+default = "agy"
+label_key = "settings.default_backend.label"
+description_key = "settings.default_backend.description"
+options = [
+  { value = "agy", label_key = "settings.default_backend.option_agy" },
+  { value = "codex", label_key = "settings.default_backend.option_codex" },
+  { value = "api", label_key = "settings.default_backend.option_api" },
+  { value = "ollama", label_key = "settings.default_backend.option_ollama" },
+]
+
+[[setting]]
+key = "api_url"
+type = "string"
+default = "https://api.deepseek.com/v1"
+label_key = "settings.api_url.label"
+description_key = "settings.api_url.description"
+
+[[setting]]
+key = "api_key"
+type = "string"
+default = ""
+label_key = "settings.api_key.label"
+description_key = "settings.api_key.description"
+
+[[setting]]
+key = "api_model"
+type = "string"
+default = "deepseek-chat"
+label_key = "settings.api_model.label"
+description_key = "settings.api_model.description"
+
+[[setting]]
+key = "ollama_url"
+type = "string"
+default = "http://127.0.0.1:11434"
+label_key = "settings.ollama_url.label"
+description_key = "settings.ollama_url.description"
+
+[[setting]]
+key = "ollama_model"
+type = "string"
+default = "llama3.2"
+label_key = "settings.ollama_model.label"
+description_key = "settings.ollama_model.description"
+
+[[setting]]
+key = "system_prompt"
+type = "string"
+default = "You are a helpful, concise AI coding assistant in a Linux desktop environment."
+label_key = "settings.system_prompt.label"
+description_key = "settings.system_prompt.description"
+
+[[widget]]
+id = "ai-sidebar-widget"
+entry = "widget.luau"
+
+[[panel]]
+id = "ai-sidebar-panel"
+entry = "panel.luau"
+placement = "floating"
+position = "center_right"
+width = 540
+height = "fill"
+keyboard_focus = "on_demand"
+capture_keys = ["Escape"]
