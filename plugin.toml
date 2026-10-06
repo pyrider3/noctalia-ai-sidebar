@@ -77,3 +77,4 @@ width = 540
 height = "fill"
 keyboard_focus = "on_demand"
 capture_keys = ["Escape"]
+dismiss_on_outside_click = false
